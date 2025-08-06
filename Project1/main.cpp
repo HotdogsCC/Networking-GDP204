@@ -14,6 +14,7 @@
 #include <queue>
 #include <map>
 #include <cctype>
+#include <iostream>
 
 #include <GameNetworkingSockets/steam/steamnetworkingsockets.h>
 #include <GameNetworkingSockets/steam/isteamnetworkingutils.h>
@@ -359,6 +360,8 @@ public:
 		if (m_hConnection == k_HSteamNetConnection_Invalid)
 			FatalError("Failed to create connection");
 
+		bool isHeld = false;
+
 		while (!g_bQuit)
 		{
 			//
@@ -374,7 +377,11 @@ public:
 				else if (numMsgs < 0)
 					FatalError("Error checking for messages");
 				else
+
 				{
+					//const int 
+
+
 					// Just echo anything we get from the server
 					fwrite(pIncomingMsg->m_pData, 1, pIncomingMsg->m_cbSize, stdout);
 					fputc('\n', stdout);
@@ -394,12 +401,29 @@ public:
 			//
 			// SEND
 			//
+			std::string DebugMessage = "";
+			if (GetAsyncKeyState('K'))
+			{
+				if (!isHeld)
+				{
+					isHeld = true;
+					DebugMessage = "K K K K K K";
+				}
 
-			std::string DebugMessage = "Client message";
+				
+			}
+			else
+			{
+				isHeld = false;
+			}
+
+			//std::cout << "Enter your message: ";
+			
+			//std::getline(std::cin, DebugMessage);
 
 			// Send it to the server and let them parse it
 			m_pInterface->SendMessageToConnection(m_hConnection, DebugMessage.c_str(), (uint32)DebugMessage.length(), k_nSteamNetworkingSend_Reliable, nullptr);
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
 		}
 
 		g_bQuit = true;
