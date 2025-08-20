@@ -1,0 +1,26 @@
+@0xf677e167cfd550f4;
+# Top-level message sent/received by the server/client
+struct UserMessage {
+	command :union {
+		logon @0	:UserLogon;
+		setNick @1	:UserSetNick;
+		sendChat @2 :UserSendChat;
+	}
+}
+
+# Sent from client to server when a user is logging in
+struct UserLogon {
+	name @0 :Text;
+}
+
+# Sent from client to server when a user is updating their nickname
+struct UserSetNick {
+	newName @0 :Text;
+}
+
+# Sent from client to server when a user is sending a chat message
+# Sent from server to client when broadcasting a chat message to other users
+struct UserSendChat {
+	contents @0 :Text;
+	timestamp @1 :Int32;
+}

@@ -1,6 +1,7 @@
 // Example client/server application using SteamNetworkingSockets based on Valve Corporation chat example
 
 #define _CRT_SECURE_NO_WARNINGS
+#define KJ_NO_EXCEPTIONS 1
 #include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -13,10 +14,15 @@
 #include <mutex>
 #include <queue>
 #include <map>
+#include <capnp/message.h>
+#include <capnp/serialize-packed.h>
 #include <cctype>
+
 
 #include <GameNetworkingSockets/steam/steamnetworkingsockets.h>
 #include <GameNetworkingSockets/steam/isteamnetworkingutils.h>
+
+#include "UserMessage.capnp.h"
 #ifndef STEAMNETWORKINGSOCKETS_OPENSOURCE
 #include <GameNetworkingSockets/steam/steam_api.h>
 #endif
@@ -205,8 +211,51 @@ public:
 				if (numMsgs < 0)
 					FatalError("Error checking for messages");
 				assert(numMsgs == 1 && pIncomingMsg);
-				auto itClient = std::find(m_Clients.begin(), m_Clients.end(), pIncomingMsg->m_conn);
+				//old
+				//auto itClient = std::find(m_Clients.begin(), m_Clients.end(), pIncomingMsg->m_conn);
+				auto itClient = m_mapClients.find(pIncomingMsg->m_conn);
 				assert(itClient != m_Clients.end());
+
+				//wrap the incoming message in an object
+				auto IncomingArr = kj::ArrayPtr<capnp::word>(reinterpret_cast<capnp::word*>(pIncomingMsg->m_pData),
+					pIncomingMsg->m_cbSize / sizeof(capnp::word));
+
+				//init flat array message reader with the above ptr
+				capnp::FlatArrayMessageReader Message(IncomingArr);
+
+				//retrieve message
+				UserMessage::Reader UserMessageRead = Message.getRoot<UserMessage>();
+
+				//switch on the type of command that was set before transmission
+				switch (UserMessageRead.getCommand().which())
+				{
+				case UserMessage::Command::LOGON:
+
+					break;
+
+				case UserMessage::Command::SET_NICK:
+					{
+						auto MessageNewName = UserMessageRead.getCommand().getSetNick().getNewName();
+
+						const char* nick = MessageNewName.cStr();
+						while (isspace(*nick))
+						{
+							++nick;
+						}
+
+						//let everyone else know we changed our name
+						sprintf(temp, "%s changed their name to %s", itClient->second.c_str(), nick);
+						SendStringToAllClients(temp, itClient->first);
+
+						break;
+					}
+
+				case UserMessage::Command::SEND_CHAT:
+					{
+						break;
+					}
+				}
+
 
 				// '\0'-terminate it to make it easier to parse
 				// Assume it's a c-string and print it as-is
@@ -270,7 +319,8 @@ private:
 	HSteamNetPollGroup m_hPollGroup;
 	ISteamNetworkingSockets* m_pInterface;
 
-	std::vector< HSteamNetConnection> m_Clients;
+	//std::vector< HSteamNetConnection> m_Clients;
+	std::map<HSteamNetConnection, std::string> m_mapClients;
 
 	static void SteamNetConnectionStatusChangedCallback(SteamNetConnectionStatusChangedCallback_t* pInfo)
 	{
@@ -279,7 +329,26 @@ private:
 
 	void SendStringToClient(HSteamNetConnection conn, const char* str)
 	{
-		m_pInterface->SendMessageToConnection(conn, str, (uint32)strlen(str), k_nSteamNetworkingSend_Reliable, nullptr);
+		//create message builder
+		capnp::MallocMessageBuilder Message;
+
+		//init the builder with our application message type
+		UserMessage::Builder UserMessagePack = Message.initRoot<UserMessage>();
+
+		//init our top level object and init the union field
+		UserMessagePack.initCommand().initSendChat().setContents(str);
+
+		//prepare message as a flat array of bytes
+		const auto PackedMessage = capnp::messageToFlatArray(Message);
+		const auto PackedBytes = PackedMessage.asBytes();
+
+
+		//pass bytes
+		m_pInterface->SendMessageToConnection(conn, PackedBytes.begin(), (uint32)PackedBytes.size(), 
+			k_nSteamNetworkingSend_Reliable, nullptr);
+
+		//old raw string output
+		//m_pInterface->SendMessageToConnection(conn, str, (uint32)strlen(str), k_nSteamNetworkingSend_Reliable, nullptr);
 	}
 
 	void OnSteamNetConnectionStatusChanged(SteamNetConnectionStatusChangedCallback_t* pInfo)
